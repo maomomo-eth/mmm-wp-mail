@@ -1,0 +1,28 @@
+name: 发布安装包
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, openssl, mbstring, pdo_sqlite
+      - name: 验证
+        run: |
+          find includes tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
+          php -l mmm-wp-mail.php
+          php -l uninstall.php
+          bash scripts/setup-test.sh
+          php tests/integration.php
+      - name: 构建并校验版本
+        run: php scripts/build.php "$GITHUB_REF_NAME"
+      - name: 创建正式 Release
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: gh release create "$GITHUB_REF_NAME" dist/mmm-wp-mail.zip --verify-tag --title "$GITHUB_REF_NAME" --notes-file dist/release-notes.txt

@@ -1,0 +1,37 @@
+name: 检查与集成测试
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - php: '7.4'
+            wordpress: wordpress-6.8.tar.gz
+          - php: '8.3'
+            wordpress: latest.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          extensions: openssl, mbstring, zip, pdo_sqlite
+      - name: PHP 语法
+        run: find includes tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l && php -l mmm-wp-mail.php && php -l uninstall.php
+      - name: 安装隔离 WordPress
+        env:
+          WP_ARCHIVE: '${{ matrix.wordpress }}'
+        run: bash scripts/setup-test.sh
+      - name: 集成测试
+        run: php tests/integration.php
+      - name: 构建
+        run: php scripts/build.php
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 文档检查
+        run: |
+          npx --yes markdownlint-cli2 --config .markdownlint.json README.md
+          npx --yes @lint-md/cli --config .lintmdrc README.md

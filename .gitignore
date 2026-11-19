@@ -1,0 +1,6 @@
+.test-wordpress/
+dist/
+vendor/
+node_modules/
+*.log
+.env
