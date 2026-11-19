@@ -14,7 +14,7 @@ final class MMM_Mail_Admin {
     }
 
     public static function menu() {
-        add_options_page( 'mmm-wp-mail', 'mmm-wp-mail', 'manage_options', 'mmm-wp-mail', array( __CLASS__, 'page' ) );
+        add_options_page( 'MAO-WP-MAIL', 'MAO-WP-MAIL', 'manage_options', 'mmm-wp-mail', array( __CLASS__, 'page' ) );
     }
 
     public static function register() {
@@ -45,16 +45,18 @@ final class MMM_Mail_Admin {
         $error = '';
         $capture = static function ( $failure ) use ( &$error ) { $error = $failure->get_error_message(); };
         add_action( 'wp_mail_failed', $capture );
-        $sent = wp_mail( $to, 'mmm-wp-mail 测试邮件', '<p>这是一封来自 ' . esc_html( get_bloginfo( 'name' ) ) . ' 的测试邮件。</p><p>当前时间：' . esc_html( current_time( 'mysql' ) ) . '</p>', array( 'Content-Type: text/html; charset=UTF-8' ) );
+        $sent = wp_mail( $to, 'MAO-WP-MAIL 测试邮件', '<p>这是一封来自 ' . esc_html( get_bloginfo( 'name' ) ) . ' 的测试邮件。</p><p>当前时间：' . esc_html( current_time( 'mysql' ) ) . '</p>', array( 'Content-Type: text/html; charset=UTF-8' ) );
         remove_action( 'wp_mail_failed', $capture );
         // 即使其他插件的错误信息含有密钥，也不回显完整凭据。
-        foreach ( array( 'brevo_key', 'resend_key', 'smtp_password' ) as $field ) {
+        foreach ( array( 'brevo_key', 'resend_key', 'smtp_password', 'backup_brevo_key', 'backup_resend_key', 'backup_smtp_password' ) as $field ) {
             $secret = MMM_Mail_Settings::secret( $field );
             if ( '' !== $secret ) {
                 $error = str_replace( $secret, '[已隐藏]', $error );
             }
         }
-        self::back( $sent ? '服务商已接收测试邮件，请检查收件箱和垃圾箱。' : '发送失败：' . ( $error ?: '请检查配置及其他邮件插件。' ), (bool) $sent );
+        $delivery = MMM_Mail_Transport::$last_delivery;
+        $accepted = ! empty( $delivery['backup'] ) ? '主用发送失败，备用通道已接收测试邮件。' : '主用通道已接收测试邮件。';
+        self::back( $sent ? $accepted . '请检查收件箱和垃圾箱。' : '发送失败：' . ( $error ?: '请检查配置及其他邮件插件。' ), (bool) $sent );
     }
 
     public static function check_update() {
@@ -92,12 +94,45 @@ final class MMM_Mail_Admin {
         echo '<tr><th scope="row">' . esc_html( $label ) . '</th><td><label><input type="checkbox" name="' . esc_attr( MMM_Mail_Settings::OPTION . '[' . $key . ']' ) . '" value="1" ' . checked( $s[ $key ], 1, false ) . '>启用</label></td></tr>';
     }
 
+    private static function channel_fields( $prefix ) {
+        $s = MMM_Mail_Settings::get();
+        $select_id = 'mmm-' . $prefix . 'provider';
+        echo '<div data-channel="' . esc_attr( $prefix ) . '"><table class="form-table" role="presentation"><tr><th><label for="' . esc_attr( $select_id ) . '">' . ( $prefix ? '备用发送方式' : '主用发送方式' ) . '</label></th><td><select data-channel-select id="' . esc_attr( $select_id ) . '" name="' . esc_attr( MMM_Mail_Settings::OPTION . '[' . $prefix . 'provider]' ) . '">';
+        $options = array( '' => $prefix ? '不启用备用发送' : '不接管（使用 WordPress 默认方式）', 'brevo' => 'Brevo API', 'resend' => 'Resend API', 'smtp' => '普通 SMTP' );
+        foreach ( $options as $key => $label ) {
+            echo '<option value="' . esc_attr( $key ) . '" ' . selected( $s[ $prefix . 'provider' ], $key, false ) . '>' . esc_html( $label ) . '</option>';
+        }
+        echo '</select></td></tr>';
+        self::input( $prefix . 'from_email', '发件人邮箱', 'email', 'Brevo / Resend 需要先在服务商后台验证发件人或域名。' );
+        self::input( $prefix . 'from_name', '发件人名称' );
+        if ( ! $prefix ) {
+            self::checkbox( 'force_from', '强制使用上述发件人' );
+        }
+        echo '</table><div data-provider="brevo"><h3>Brevo API</h3><table class="form-table" role="presentation">';
+        self::input( $prefix . 'brevo_key', 'API Key', 'password' );
+        echo '</table></div><div data-provider="resend"><h3>Resend API</h3><table class="form-table" role="presentation">';
+        self::input( $prefix . 'resend_key', 'API Key', 'password' );
+        echo '</table></div><div data-provider="smtp"><h3>普通 SMTP</h3><table class="form-table" role="presentation">';
+        self::input( $prefix . 'smtp_host', 'SMTP 主机', 'text', '例如 smtp.example.com，不含协议和端口。' );
+        self::input( $prefix . 'smtp_port', '端口', 'number', 'STARTTLS 通常用 587，SSL/TLS 通常用 465。' );
+        $encryption_id = 'mmm-' . $prefix . 'encryption';
+        echo '<tr><th><label for="' . esc_attr( $encryption_id ) . '">加密方式</label></th><td><select id="' . esc_attr( $encryption_id ) . '" name="' . esc_attr( MMM_Mail_Settings::OPTION . '[' . $prefix . 'smtp_encryption]' ) . '">';
+        foreach ( array( 'tls' => 'STARTTLS', 'ssl' => 'SSL/TLS', '' => '无加密（仅可信内网）' ) as $key => $label ) {
+            echo '<option value="' . esc_attr( $key ) . '" ' . selected( $s[ $prefix . 'smtp_encryption' ], $key, false ) . '>' . esc_html( $label ) . '</option>';
+        }
+        echo '</select></td></tr>';
+        self::checkbox( $prefix . 'smtp_auth', 'SMTP 身份认证' );
+        self::input( $prefix . 'smtp_user', '用户名' );
+        self::input( $prefix . 'smtp_password', '密码 / 授权码', 'password' );
+        echo '</table></div></div>';
+    }
+
     public static function page() {
         if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
         $s = MMM_Mail_Settings::get();
-        echo '<div class="wrap"><h1>mmm-wp-mail</h1><p>选择一种发送方式并保存，再发送测试邮件。请停用其他接管邮件发送的插件。</p>';
+        echo '<div class="wrap"><h1>MAO-WP-MAIL</h1><p>选择一种发送方式并保存，再发送测试邮件。请停用其他接管邮件发送的插件。</p>';
         settings_errors();
         $notice = get_transient( 'mmm_mail_notice_' . get_current_user_id() );
         if ( $notice ) {
@@ -106,30 +141,9 @@ final class MMM_Mail_Admin {
         }
         echo '<form method="post" action="options.php">';
         settings_fields( 'mmm_mail' );
-        echo '<table class="form-table" role="presentation"><tr><th><label for="mmm-provider">发送方式</label></th><td><select id="mmm-provider" name="' . esc_attr( MMM_Mail_Settings::OPTION ) . '[provider]">';
-        foreach ( array( '' => '不接管（使用 WordPress 默认方式）', 'brevo' => 'Brevo API', 'resend' => 'Resend API', 'smtp' => '普通 SMTP' ) as $key => $label ) {
-            echo '<option value="' . esc_attr( $key ) . '" ' . selected( $s['provider'], $key, false ) . '>' . esc_html( $label ) . '</option>';
-        }
-        echo '</select></td></tr>';
-        self::input( 'from_email', '发件人邮箱', 'email', 'Brevo / Resend 需要先在服务商后台验证发件人或域名。' );
-        self::input( 'from_name', '发件人名称' );
-        self::checkbox( 'force_from', '强制使用上述发件人' );
-        echo '</table><div data-provider="brevo"><h2>Brevo API</h2><table class="form-table" role="presentation">';
-        self::input( 'brevo_key', 'API Key', 'password' );
-        echo '</table></div><div data-provider="resend"><h2>Resend API</h2><table class="form-table" role="presentation">';
-        self::input( 'resend_key', 'API Key', 'password' );
-        echo '</table></div><div data-provider="smtp"><h2>普通 SMTP</h2><table class="form-table" role="presentation">';
-        self::input( 'smtp_host', 'SMTP 主机', 'text', '例如 smtp.example.com，不含协议和端口。' );
-        self::input( 'smtp_port', '端口', 'number', 'STARTTLS 通常用 587，SSL/TLS 通常用 465。' );
-        echo '<tr><th><label for="mmm-encryption">加密方式</label></th><td><select id="mmm-encryption" name="' . esc_attr( MMM_Mail_Settings::OPTION ) . '[smtp_encryption]">';
-        foreach ( array( 'tls' => 'STARTTLS', 'ssl' => 'SSL/TLS', '' => '无加密（仅可信内网）' ) as $key => $label ) {
-            echo '<option value="' . esc_attr( $key ) . '" ' . selected( $s['smtp_encryption'], $key, false ) . '>' . esc_html( $label ) . '</option>';
-        }
-        echo '</select></td></tr>';
-        self::checkbox( 'smtp_auth', 'SMTP 身份认证' );
-        self::input( 'smtp_user', '用户名' );
-        self::input( 'smtp_password', '密码 / 授权码', 'password' );
-        echo '</table></div>';
+        self::channel_fields( '' );
+        echo '<hr><h2>备用发送</h2><p>主用通道失败后，使用备用通道发送一次。备用始终使用这里配置的发件人。</p><p class="description">网络超时或 SMTP 部分投递后报错时，切换可能产生重复邮件；服务商接收后的退信不会触发备用。</p>';
+        self::channel_fields( 'backup_' );
         submit_button( '保存设置' );
         echo '</form><hr><h2>发送测试邮件</h2><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="mmm_mail_test">';
         wp_nonce_field( 'mmm_mail_test' );
@@ -142,6 +156,6 @@ final class MMM_Mail_Admin {
             submit_button( '检查更新', 'secondary', 'mmm_mail_update_submit' );
             echo '</form>';
         }
-        echo '</div><script>document.addEventListener("DOMContentLoaded",function(){var s=document.getElementById("mmm-provider");function show(){document.querySelectorAll("[data-provider]").forEach(function(e){e.hidden=e.dataset.provider!==s.value;});}s.addEventListener("change",show);show();});</script>';
+        echo '</div><script>document.addEventListener("DOMContentLoaded",function(){document.querySelectorAll("[data-channel]").forEach(function(c){var s=c.querySelector("[data-channel-select]");function show(){c.querySelectorAll("[data-provider]").forEach(function(e){e.hidden=e.dataset.provider!==s.value;});}s.addEventListener("change",show);show();});});</script>';
     }
 }

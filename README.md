@@ -1,6 +1,6 @@
-# mmm-wp-mail
+# MAO-WP-MAIL
 
-自用的轻量 WordPress 邮件插件，支持 Brevo API、Resend API 和普通 SMTP，直接接管 `wp_mail()`，支持 GitHub Release 后台一键更新。
+自用的轻量 WordPress 邮件插件，支持 Brevo API、Resend API 和普通 SMTP，提供独立备用发送通道，直接接管 `wp_mail()`，支持 GitHub Release 后台一键更新。
 
 运行时复用 WordPress 自带的 PHPMailer 和 HTTP API，无 Composer 依赖、外部 SDK、广告、统计或邮件内容日志。
 
@@ -10,13 +10,23 @@
 
 1. 从 [GitHub Releases](https://github.com/maomomo-eth/mmm-wp-mail/releases/latest) 下载附件 `mmm-wp-mail.zip`，不要下载页面上的源码压缩包。
 2. 在 WordPress 后台选择「插件 → 安装插件 → 上传插件」，上传并启用。
-3. 停用其他接管邮件发送的插件，进入「设置 → mmm-wp-mail」。
+3. 停用其他接管邮件发送的插件，进入「设置 → MAO-WP-MAIL」。
 4. 选择 Brevo、Resend 或 SMTP，填写发件人及相应凭据，保存设置。
 5. 发送测试邮件，并检查收件箱和垃圾邮件箱。
 
 Brevo / Resend 需要先验证发件人或域名，并按服务商要求配置 SPF、DKIM 和 DMARC。SMTP 通常使用 STARTTLS + 587 或 SSL/TLS + 465；密码可能需要使用邮箱授权码。
 
 「强制使用上述发件人」默认开启；关闭后保留 WordPress 或调用插件设置的发件人。首次启用尚未配置时，保持 WordPress 默认发送行为。
+
+## 备用发送
+
+在设置页的「备用发送」中选择 Brevo API、Resend API 或 SMTP，并填写备用发件人与凭据。默认不启用，已有主用配置无需重新填写；文件夹、主插件文件、仓库名和更新地址仍为 `mmm-wp-mail`。
+
+例如：主用选择 Brevo，备用选择 Resend，分别配置各自验证过的发件人和 API Key。主用返回错误或网络失败时，插件使用备用配置发送一次；主用成功时不会调用备用。支持同服务商的不同账户，也支持 API 与 SMTP 互相备用。备用始终使用备用发件人，正文、收件人、抄送、密送、回复地址与附件保留。
+
+主备都失败时，`wp_mail()` 返回 `false`，并通过一次 `wp_mail_failed` 事件提供合并错误；备用成功时返回 `true`，只触发最终成功事件。设置页测试邮件使用同样的主备顺序，成功提示会说明是否使用了备用通道。每封新邮件均先走主用，不会永久切换。
+
+网络超时可能发生在服务商已经接收邮件之后，SMTP 也可能在部分收件人已接受时返回错误，因此自动切换可能产生重复投递。服务商已接收后发生的延迟退信不会触发切换。本功能不承诺恰好投递一次。
 
 ## 凭据
 
@@ -28,6 +38,10 @@ Brevo / Resend 需要先验证发件人或域名，并按服务商要求配置 S
 define( 'MMM_MAIL_BREVO_KEY', '你的 Brevo API Key' );
 define( 'MMM_MAIL_RESEND_KEY', '你的 Resend API Key' );
 define( 'MMM_MAIL_SMTP_PASSWORD', '你的 SMTP 密码或授权码' );
+// 备用凭据使用独立常量。
+define( 'MMM_MAIL_BACKUP_BREVO_KEY', '备用 Brevo API Key' );
+define( 'MMM_MAIL_BACKUP_RESEND_KEY', '备用 Resend API Key' );
+define( 'MMM_MAIL_BACKUP_SMTP_PASSWORD', '备用 SMTP 密码或授权码' );
 ```
 
 仅需定义实际使用的常量。清除后台保存的凭据不会移除常量。没有 OpenSSL 扩展时请通过常量配置凭据。
@@ -40,7 +54,7 @@ define( 'MMM_MAIL_SMTP_PASSWORD', '你的 SMTP 密码或授权码' );
 - API 模式仅转发 `X-*`、`List-Unsubscribe` 和 `List-Unsubscribe-Post` 自定义头，不转发信封与 MIME 控制头。
 - API 模式遇到 CID 内嵌图片、复杂 MIME 或 Brevo 多个 Reply-To 时明确失败，请改用 SMTP。Brevo 要求至少一个 To 收件人。
 - SMTP 由 WordPress 内置 PHPMailer 处理，支持身份认证、STARTTLS、SSL/TLS 和可信内网无认证中继；主机字段支持单个域名或 IPv4 地址。
-- 发送成功表示服务商接受请求，最终投递结果请查看服务商后台。本插件不保存邮件正文，不提供队列、自动重试、追踪或失败回退。
+- 发送成功表示服务商接受请求，最终投递结果请查看服务商后台。本插件不保存邮件正文，不提供队列、追踪或服务商接收后的退信重发。
 - 设置按站点保存；多站点请逐站启用、配置。删除插件会清除当前站点保存的配置，停用不会清除。
 
 ## GitHub 后台更新
@@ -54,7 +68,7 @@ WordPress 检查更新后会在插件列表显示「立即更新」，也可使�
 发布新版本：
 
 1. 同步修改主插件文件的版本头、`MMM_MAIL_VERSION` 和 `readme.txt` 的 Stable tag，更新变更说明。
-2. 提交并推送代码，再推送匹配的标签，例如 `v1.0.1`。
+2. 提交并推送代码，再推送匹配的标签，例如 `v1.1.1`。
 3. GitHub Actions 自动运行集成测试、生成固定目录结构的 ZIP 并创建正式 Release。
 4. 已安装站点在下一次更新检查时获得新版本。草稿、预发布和仅有源码包的 Release 不用于更新。
 

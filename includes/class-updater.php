@@ -70,7 +70,7 @@ final class MMM_Mail_Updater {
         if ( ! $release ) {
             return $result;
         }
-        return (object) array( 'name' => 'mmm-wp-mail', 'slug' => 'mmm-wp-mail', 'version' => $release['version'],
+        return (object) array( 'name' => 'MAO-WP-MAIL', 'slug' => 'mmm-wp-mail', 'version' => $release['version'],
             'author' => 'maomomo-eth', 'homepage' => $release['url'], 'requires' => $release['requires'],
             'requires_php' => $release['requires_php'], 'download_link' => $release['package'],
             'last_updated' => $release['published'], 'sections' => array(

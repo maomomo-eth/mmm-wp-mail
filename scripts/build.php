@@ -30,5 +30,5 @@ foreach ( $files as $file ) {
 }
 $zip->close();
 $meta = '<!-- mmm-wp-mail: ' . json_encode( array( 'requires' => trim( $wp[1] ), 'requires_php' => trim( $php[1] ) ) ) . ' -->';
-file_put_contents( $root . '/dist/release-notes.txt', "轻量 WordPress 邮件插件：Brevo API、Resend API、SMTP。\n\n安装附件 mmm-wp-mail.zip，后续可在 WordPress 后台一键更新。\n\n" . $meta . "\n" );
+file_put_contents( $root . '/dist/release-notes.txt', "MAO-WP-MAIL：Brevo API、Resend API、SMTP，支持主用失败后自动使用独立备用通道。\n\n安装附件 mmm-wp-mail.zip，后续可在 WordPress 后台一键更新。\n\n" . $meta . "\n" );
 echo '已生成 dist/mmm-wp-mail.zip，版本 ' . $version[1] . PHP_EOL;

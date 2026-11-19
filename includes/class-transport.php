@@ -2,13 +2,16 @@
 defined( 'ABSPATH' ) || exit;
 
 final class MMM_Mail_Transport {
+    public static $last_delivery = array();
+
     public static function boot() {
         add_filter( 'pre_wp_mail', array( __CLASS__, 'prepare' ), 10, 2 );
         add_action( 'phpmailer_init', array( __CLASS__, 'configure' ), 999 );
     }
 
     public static function prepare( $result, $atts ) {
-        if ( null !== $result || ! in_array( MMM_Mail_Settings::get()['provider'], array( 'brevo', 'resend' ), true ) ) {
+        self::$last_delivery = array();
+        if ( null !== $result || ! MMM_Mail_Settings::get()['provider'] ) {
             return $result;
         }
         require_once ABSPATH . WPINC . '/PHPMailer/Exception.php';
@@ -25,12 +28,19 @@ final class MMM_Mail_Transport {
     }
 
     public static function configure( $mail ) {
-        $s = MMM_Mail_Settings::get();
+        self::configure_profile( $mail );
+    }
+
+    public static function configure_profile( $mail, $prefix = '' ) {
+        $s = MMM_Mail_Settings::profile( $prefix );
         if ( ! $s['provider'] ) {
             return;
         }
         if ( $s['force_from'] && is_email( $s['from_email'] ) ) {
             $mail->setFrom( $s['from_email'], $s['from_name'], false );
+            if ( '' !== $prefix ) {
+                $mail->Sender = $s['from_email'];
+            }
         }
         $mail->SMTPDebug = 0;
         if ( 'smtp' === $s['provider'] ) {
@@ -41,7 +51,7 @@ final class MMM_Mail_Transport {
             $mail->SMTPAutoTLS = 'tls' === $s['smtp_encryption'];
             $mail->SMTPAuth = (bool) $s['smtp_auth'];
             $mail->Username = $s['smtp_user'];
-            $mail->Password = MMM_Mail_Settings::secret( 'smtp_password' );
+            $mail->Password = MMM_Mail_Settings::secret( $prefix . 'smtp_password' );
             $mail->Timeout = 20;
             $mail->SMTPKeepAlive = false;
         } else {
@@ -58,8 +68,8 @@ final class MMM_Mail_Transport {
         }, $addresses ) );
     }
 
-    public static function send_api( $mail, $provider ) {
-        $key = MMM_Mail_Settings::secret( $provider . '_key' );
+    public static function send_api( $mail, $provider, $prefix = '' ) {
+        $key = MMM_Mail_Settings::secret( $prefix . $provider . '_key' );
         if ( '' === $key ) {
             throw new \PHPMailer\PHPMailer\Exception( $provider . ' API Key 未设置或无法解密，请重新保存。' );
         }

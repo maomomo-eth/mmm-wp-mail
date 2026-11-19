@@ -25,24 +25,28 @@ $requests = array();
 $api_status = 201;
 $api_error = false;
 $release_data = array();
-$mock = static function ( $pre, $args, $url ) use ( &$requests, &$api_status, &$api_error, &$release_data ) {
+$channel_status = array();
+$channel_errors = array();
+$mock = static function ( $pre, $args, $url ) use ( &$requests, &$api_status, &$api_error, &$release_data, &$channel_status, &$channel_errors ) {
     if ( false !== strpos( $url, 'api.github.com/repos/' ) ) {
         return array( 'response' => array( 'code' => 200 ), 'body' => wp_json_encode( $release_data ) );
     }
     if ( in_array( $url, array( 'https://api.brevo.com/v3/smtp/email', 'https://api.resend.com/emails' ), true ) ) {
         $requests[] = array( 'url' => $url, 'args' => $args, 'payload' => json_decode( $args['body'], true ) );
-        if ( $api_error ) {
+        $credential = $args['headers']['api-key'] ?? $args['headers']['Authorization'] ?? '';
+        if ( $api_error || ! empty( $channel_errors[ $credential ] ) ) {
             return new WP_Error( 'http_request_failed', '模拟网络超时' );
         }
-        return array( 'response' => array( 'code' => $api_status ), 'body' => wp_json_encode( array( 'id' => 'test-id', 'messageId' => '<test-id@example.com>' ) ) );
+        return array( 'response' => array( 'code' => $channel_status[ $credential ] ?? $api_status ), 'body' => wp_json_encode( array( 'id' => 'test-id', 'messageId' => '<test-id@example.com>' ) ) );
     }
     return $pre;
 };
 add_filter( 'pre_http_request', $mock, 10, 3 );
 $success = 0;
 $failure = '';
+$failure_count = 0;
 add_action( 'wp_mail_succeeded', static function () use ( &$success ) { ++$success; } );
-add_action( 'wp_mail_failed', static function ( $error ) use ( &$failure ) { $failure = $error->get_error_message(); } );
+add_action( 'wp_mail_failed', static function ( $error ) use ( &$failure, &$failure_count ) { ++$failure_count; $failure = $error->get_error_message(); } );
 $process = null;
 try {
     wp_set_current_user( 1 );
@@ -107,6 +111,50 @@ try {
     configure_test( 'resend', array( 'force_from' => 0 ) );
     verify( wp_mail( 'to@example.com', '发件人', '正文', 'From: Custom <custom@example.com>' ), '关闭强制发件人可发送' );
     verify( false !== strpos( end( $requests )['payload']['from'], 'custom@example.com' ), '保留调用者发件人' );
+    $backup_settings = array( 'backup_provider' => 'resend', 'backup_from_email' => 'backup@example.com', 'backup_from_name' => '备用站点', 'backup_resend_key' => 'backup-resend-secret' );
+    configure_test( 'brevo', $backup_settings );
+    verify( 'backup-resend-secret' === MMM_Mail_Settings::secret( 'backup_resend_key' ) && 'backup-resend-secret' !== MMM_Mail_Settings::get()['backup_resend_key'], '备用凭据独立加密保存' );
+    $channel_status['test-brevo-secret'] = 401;
+    $before = count( $requests );
+    $success_before = $success;
+    $failures_before = $failure_count;
+    verify( wp_mail( 'to@example.com', '备用测试', '<p>备用正文</p>', $headers, array( $fixture ) ), 'Brevo 失败后自动使用 Resend 备用发送' );
+    verify( 2 === count( $requests ) - $before && $success === $success_before + 1 && $failure_count === $failures_before, '主备各尝试一次，仅触发最终成功钩子' );
+    $last = end( $requests );
+    verify( 'Bearer backup-resend-secret' === $last['args']['headers']['Authorization'] && false !== strpos( $last['payload']['from'], 'backup@example.com' ), '备用使用自己的凭据和发件人' );
+    verify( '<p>备用正文</p>' === $last['payload']['html'] && isset( $last['payload']['cc'], $last['payload']['bcc'], $last['payload']['reply_to'] ) && "中文附件\n" === base64_decode( $last['payload']['attachments'][0]['content'] ), '切换保留正文、附件及抄送密送和回复地址' );
+    verify( MMM_Mail_Transport::$last_delivery['backup'], '测试邮件可获知备用通道成功' );
+    $channel_status = array();
+    $before = count( $requests );
+    verify( wp_mail( 'to@example.com', '回到主用', '正文' ) && 1 === count( $requests ) - $before && false === MMM_Mail_Transport::$last_delivery['backup'], '下一封先走主用，主用成功不发送备用' );
+    verify( 'sender@example.com' === end( $requests )['payload']['sender']['email'], '备用发件人不会污染下一封主用邮件' );
+    $channel_status = array( 'test-brevo-secret' => 401, 'Bearer backup-resend-secret' => 503 );
+    $before = count( $requests );
+    $failures_before = $failure_count;
+    verify( ! wp_mail( 'to@example.com', '主备均失败', '正文' ) && 2 === count( $requests ) - $before, '主备均失败不循环重试' );
+    verify( false !== strpos( $failure, '主用通道失败' ) && false !== strpos( $failure, '备用通道失败' ) && $failure_count === $failures_before + 1, '双通道错误合并且仅触发一次失败钩子' );
+    configure_test( 'brevo' );
+    $before = count( $requests );
+    verify( ! wp_mail( 'to@example.com', '关闭备用', '正文' ) && 1 === count( $requests ) - $before, '关闭备用时保持单通道行为' );
+    $channel_status = array();
+    $channel_errors = array( 'test-brevo-secret' => true );
+    configure_test( 'brevo', $backup_settings );
+    verify( wp_mail( 'to@example.com', '网络超时切换', '正文' ) && MMM_Mail_Transport::$last_delivery['backup'], '主用网络错误触发备用' );
+    $channel_errors = array();
+    configure_test( 'brevo', array_merge( $backup_settings, array( 'clear_brevo_key' => 1 ) ) );
+    verify( wp_mail( 'to@example.com', '主用缺少密钥', '正文' ) && MMM_Mail_Transport::$last_delivery['backup'], '主用缺少密钥仍可切换备用' );
+    configure_test( 'brevo', array( 'backup_provider' => 'brevo', 'backup_from_email' => 'backup@example.com', 'backup_brevo_key' => 'backup-brevo-secret' ) );
+    $channel_status = array( 'test-brevo-secret' => 401 );
+    $before = count( $requests );
+    verify( wp_mail( 'to@example.com', '同服务商不同账户', '正文' ) && 2 === count( $requests ) - $before && 'backup-brevo-secret' === end( $requests )['args']['headers']['api-key'], '支持同一服务商的独立备用账户' );
+    $channel_status = array();
+    // 连接本地已关闭端口，验证 SMTP 失败后能切换 API。
+    $reserved = stream_socket_server( 'tcp://127.0.0.1:0', $errno, $socket_error );
+    $address = stream_socket_get_name( $reserved, false );
+    $closed_port = (int) substr( $address, strrpos( $address, ':' ) + 1 );
+    fclose( $reserved );
+    configure_test( 'smtp', array_merge( $backup_settings, array( 'smtp_host' => '127.0.0.1', 'smtp_port' => $closed_port, 'smtp_encryption' => '' ) ) );
+    verify( wp_mail( 'to@example.com', 'SMTP 转 API', '正文' ) && MMM_Mail_Transport::$last_delivery['backup'], 'SMTP 连接失败后使用 API 备用' );
     $smtp_file = $root . '/.test-wordpress/smtp.eml';
     $process = proc_open( array( PHP_BINARY, __DIR__ . '/smtp-server.php', $smtp_file ), array( 0 => array( 'pipe', 'r' ), 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) ), $pipes );
     $address = trim( fgets( $pipes[1] ) );
@@ -119,6 +167,18 @@ try {
     $process = null;
     $mime = file_get_contents( $smtp_file );
     verify( false !== strpos( $mime, 'SMTP body' ) && false !== strpos( $mime, 'attachment.txt' ), 'SMTP MIME 正文与附件正确' );
+    $process = proc_open( array( PHP_BINARY, __DIR__ . '/smtp-server.php', $smtp_file ), array( 0 => array( 'pipe', 'r' ), 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) ), $pipes );
+    $address = trim( fgets( $pipes[1] ) );
+    $port = (int) substr( $address, strrpos( $address, ':' ) + 1 );
+    configure_test( 'brevo', array( 'backup_provider' => 'smtp', 'backup_from_email' => 'smtp-backup@example.com', 'backup_smtp_host' => '127.0.0.1', 'backup_smtp_port' => $port, 'backup_smtp_encryption' => '', 'backup_smtp_auth' => 1, 'backup_smtp_user' => 'test-user', 'backup_smtp_password' => 'test-pass' ) );
+    $channel_status = array( 'test-brevo-secret' => 401 );
+    verify( wp_mail( 'to@example.com', 'API to SMTP', 'Fallback SMTP body', '', array( $fixture ) ), 'API 失败后备用 SMTP 完成真实认证和传输' );
+    foreach ( $pipes as $pipe ) { fclose( $pipe ); }
+    verify( 0 === proc_close( $process ), '备用 SMTP 会话正常关闭' );
+    $process = null;
+    $mime = file_get_contents( $smtp_file );
+    verify( false !== strpos( $mime, 'Fallback SMTP body' ) && false !== strpos( $mime, 'smtp-backup@example.com' ) && false !== strpos( $mime, 'attachment.txt' ), '备用 SMTP 保留正文附件并使用独立发件人' );
+    $channel_status = array();
     configure_test( 'smtp', array( 'smtp_host' => 'localhost', 'smtp_encryption' => 'tls' ) );
     MMM_Mail_Transport::configure( $GLOBALS['phpmailer'] );
     verify( 'tls' === $GLOBALS['phpmailer']->SMTPSecure && $GLOBALS['phpmailer']->SMTPAutoTLS, 'STARTTLS 配置正确' );

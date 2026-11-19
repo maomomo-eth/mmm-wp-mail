@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: mmm-wp-mail
+ * Plugin Name: MAO-WP-MAIL
  * Plugin URI: https://github.com/maomomo-eth/mmm-wp-mail
- * Description: 轻量邮件发送：Brevo API、Resend API、普通 SMTP，支持 GitHub 后台更新。
- * Version: 1.0.1
+ * Description: 轻量邮件发送：Brevo API、Resend API、普通 SMTP，支持备用发送与 GitHub 后台更新。
+ * Version: 1.1.0
  * Requires at least: 6.8
  * Requires PHP: 7.4
  * Author: maomomo-eth
@@ -13,7 +13,7 @@
  */
 
 defined( 'ABSPATH' ) || exit;
-define( 'MMM_MAIL_VERSION', '1.0.1' );
+define( 'MMM_MAIL_VERSION', '1.1.0' );
 define( 'MMM_MAIL_FILE', __FILE__ );
 require_once __DIR__ . '/includes/class-settings.php';
 require_once __DIR__ . '/includes/class-transport.php';
