@@ -49,6 +49,8 @@ define( 'MMM_MAIL_SMTP_PASSWORD', '你的 SMTP 密码或授权码' );
 
 WordPress 检查更新后会在插件列表显示「立即更新」，也可使用后台提供的自动更新开关。设置页的「检查更新」可清理插件的 Release 缓存并刷新更新信息。正常结果缓存 6 小时，网络异常或未发布结果缓存 10 分钟。站点需要能访问 GitHub API 和 Release 下载地址。
 
+共享出口可能触发 GitHub 匿名 API 限流。遇到该情况，可以在 `wp-config.php` 定义 `MMM_MAIL_GITHUB_TOKEN` 为具有公开仓库读取权限的 GitHub Token。Token 仅发送到本仓库的 GitHub API 请求，不附加到安装包下载请求；仓库仍需公开。
+
 发布新版本：
 
 1. 同步修改主插件文件的版本头、`MMM_MAIL_VERSION` 和 `readme.txt` 的 Stable tag，更新变更说明。

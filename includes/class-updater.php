@@ -16,8 +16,12 @@ final class MMM_Mail_Updater {
         if ( false !== $cached ) {
             return $cached;
         }
+        $headers = array( 'Accept' => 'application/vnd.github+json', 'User-Agent' => 'mmm-wp-mail/' . MMM_MAIL_VERSION );
+        if ( defined( 'MMM_MAIL_GITHUB_TOKEN' ) && '' !== MMM_MAIL_GITHUB_TOKEN ) {
+            $headers['Authorization'] = 'Bearer ' . MMM_MAIL_GITHUB_TOKEN;
+        }
         $response = wp_remote_get( 'https://api.github.com/repos/' . self::REPO . '/releases/latest', array(
-            'timeout' => 8, 'headers' => array( 'Accept' => 'application/vnd.github+json', 'User-Agent' => 'mmm-wp-mail/' . MMM_MAIL_VERSION ),
+            'timeout' => 8, 'redirection' => 0, 'headers' => $headers,
         ) );
         $data = is_wp_error( $response ) ? null : json_decode( wp_remote_retrieve_body( $response ), true );
         $result = array();

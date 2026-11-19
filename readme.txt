@@ -2,7 +2,7 @@
 Contributors: maomomo-eth
 Requires at least: 6.8
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,5 +12,8 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 上传 GitHub Release 附件 mmm-wp-mail.zip 并启用，在“设置 → mmm-wp-mail”中配置发送方式。
 
 == Changelog ==
+= 1.0.1 =
+增加可选 GitHub Token 常量，以支持共享出口的 API 限流环境。
+
 = 1.0.0 =
 初始版本：三种发送方式、加密凭据、测试邮件和 GitHub 更新。
