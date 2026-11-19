@@ -27,6 +27,8 @@ if ! "${wp[@]}" core is-installed; then
   # 只用于本地隔离测试站，不是真实账户密码。
   "${wp[@]}" core install --url=http://127.0.0.1:8897 --title='mmm-wp-mail 测试' --admin_user=mailtest --admin_password=local-mail-test-only --admin_email=test@example.com --skip-email
 fi
+"${wp[@]}" option update siteurl http://127.0.0.1:8897
+"${wp[@]}" option update home http://127.0.0.1:8897
 if [[ ! -e .test-wordpress/wordpress/wp-content/plugins/mmm-wp-mail ]]; then
   ln -s "$root" .test-wordpress/wordpress/wp-content/plugins/mmm-wp-mail
 fi

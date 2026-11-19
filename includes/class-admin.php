@@ -134,12 +134,12 @@ final class MMM_Mail_Admin {
         echo '</form><hr><h2>发送测试邮件</h2><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="mmm_mail_test">';
         wp_nonce_field( 'mmm_mail_test' );
         echo '<label for="mmm-recipient">收件地址 </label><input class="regular-text" id="mmm-recipient" type="email" name="recipient" required value="' . esc_attr( wp_get_current_user()->user_email ) . '">';
-        submit_button( '发送测试邮件', 'secondary' );
+        submit_button( '发送测试邮件', 'secondary', 'mmm_mail_test_submit' );
         echo '</form><hr><h2>GitHub 更新</h2><p>当前版本：' . esc_html( MMM_MAIL_VERSION ) . '。正式 Release 可在插件页面一键更新。</p>';
         if ( current_user_can( 'update_plugins' ) ) {
             echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="mmm_mail_check_update">';
             wp_nonce_field( 'mmm_mail_check_update' );
-            submit_button( '检查更新', 'secondary' );
+            submit_button( '检查更新', 'secondary', 'mmm_mail_update_submit' );
             echo '</form>';
         }
         echo '</div><script>document.addEventListener("DOMContentLoaded",function(){var s=document.getElementById("mmm-provider");function show(){document.querySelectorAll("[data-provider]").forEach(function(e){e.hidden=e.dataset.provider!==s.value;});}s.addEventListener("change",show);show();});</script>';

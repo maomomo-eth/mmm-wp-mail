@@ -8,6 +8,12 @@ preg_match( '/^ \* Requires PHP: (.+)$/m', $source, $php );
 if ( empty( $version[1] ) || empty( $wp[1] ) || empty( $php[1] ) ) {
     throw new RuntimeException( '插件头信息不完整。' );
 }
+preg_match( "/define\( 'MMM_MAIL_VERSION', '([^']+)' \)/", $source, $constant );
+$readme = file_get_contents( $root . '/readme.txt' );
+preg_match( '/^Stable tag: (.+)$/m', $readme, $stable );
+if ( ( $constant[1] ?? '' ) !== $version[1] || ( $stable[1] ?? '' ) !== $version[1] ) {
+    throw new RuntimeException( '版本头、版本常量和 Stable tag 必须一致。' );
+}
 if ( isset( $argv[1] ) && 'v' . $version[1] !== $argv[1] ) {
     throw new RuntimeException( '发布标签必须与插件版本一致。' );
 }
