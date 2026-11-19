@@ -130,17 +130,17 @@ try {
     MMM_Mail_Admin::page();
     $html = ob_get_clean();
     verify( false === strpos( $html, 'test-resend-secret' ) && false !== strpos( $html, '发送测试邮件' ), '后台设置可渲染且不回显密钥' );
-    $release_data = array( 'tag_name' => 'v1.0.1', 'draft' => false, 'prerelease' => false, 'body' => '<!-- mmm-wp-mail: {"requires":"6.8","requires_php":"7.4"} -->',
-        'assets' => array( array( 'name' => 'mmm-wp-mail.zip', 'browser_download_url' => 'https://github.com/maomomo-eth/mmm-wp-mail/releases/download/v1.0.1/mmm-wp-mail.zip' ) ) );
+    $release_data = array( 'tag_name' => 'v99.0.0', 'draft' => false, 'prerelease' => false, 'body' => '<!-- mmm-wp-mail: {"requires":"6.8","requires_php":"7.4"} -->',
+        'assets' => array( array( 'name' => 'mmm-wp-mail.zip', 'browser_download_url' => 'https://github.com/maomomo-eth/mmm-wp-mail/releases/download/v99.0.0/mmm-wp-mail.zip' ) ) );
     delete_site_transient( MMM_Mail_Updater::CACHE );
     $update = MMM_Mail_Updater::update( false, array(), plugin_basename( MMM_MAIL_FILE ), array() );
-    verify( '1.0.1' === $update['version'] && '7.4' === $update['requires_php'] && false !== strpos( $update['package'], '/v1.0.1/' ), 'GitHub 正式 Release 识别更新包与环境要求' );
+    verify( '99.0.0' === $update['version'] && '7.4' === $update['requires_php'] && false !== strpos( $update['package'], '/v99.0.0/' ), 'GitHub 正式 Release 识别更新包与环境要求' );
     verify( false === MMM_Mail_Updater::update( false, array(), 'other/other.php', array() ), '不影响其他 GitHub 插件更新' );
     require_once ABSPATH . 'wp-admin/includes/update.php';
     delete_site_transient( 'update_plugins' );
     wp_update_plugins();
     $updates = get_site_transient( 'update_plugins' );
-    verify( '1.0.1' === $updates->response[ plugin_basename( MMM_MAIL_FILE ) ]->new_version, 'WordPress 核心更新检查实际生成更新提示' );
+    verify( '99.0.0' === $updates->response[ plugin_basename( MMM_MAIL_FILE ) ]->new_version, 'WordPress 核心更新检查实际生成更新提示' );
     $release_data['prerelease'] = true;
     delete_site_transient( MMM_Mail_Updater::CACHE );
     verify( ! MMM_Mail_Updater::release(), '忽略预发布版本' );
